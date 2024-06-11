@@ -1,0 +1,50 @@
+model:
+  arch: IVCR
+  model_type: pretrain_llama_v2
+  freeze_vit: True
+  freeze_qformer: True
+  max_txt_len: 2048
+  end_sym: "</s>"
+  low_resource: False
+
+  frozen_llama_proj: True
+  frozen_video_Qformer: True
+
+  vit_model: "/data/longshaohua/project/Ask-Anything/eva_vit/eva_vit_g.pth"
+  llama_model: "/data/longshaohua/project/Ask-Anything/Video-LLaMA-2-7B-Finetuned/llama-2-7b-chat-hf"
+  q_former_model: "/data/longshaohua/project/Ask-Anything/Q_Former/instruct_blip_vicuna7b_trimmed.pth"
+  ckpt: "/data/longshaohua/project/Ask-Anything/TimeChat/TimeChat-7b/timechat_7b.pth"
+  
+  fusion_head_layers: 2
+  max_frame_pos: 96
+  fusion_header_type: "seqTransf"
+
+  use_grad_checkpoint: False
+  lora: True
+  lora_inference_mode: True
+  qformer_text_input: True
+  window_size: 32
+  stride: 32
+  device_8bit: 0
+
+datasets:
+  ivcr_instruct:
+    vis_processor:
+      data_type: video
+      train:
+        name: "alpro_video_eval"
+        n_frms: 96
+        image_size: 224
+    text_processor:
+      train:
+        name: "blip_caption"
+    num_video_query_token: 32
+    tokenizer_name: "/data/longshaohua/project/LLM_3D/llama/llama-2-7b-chat-hf"
+    model_type: "llama_v2"
+    num_frm: 96
+    sample_type: 'uniform'
+    max_txt_len: 2048
+    stride: 32
+
+run:
+  task: video_text_pretrain

@@ -1,0 +1,14 @@
+cfg_path: 'eval_configs/timechat.yaml'
+task: 'tvg'
+output_dir: '/data/longshaohua/TimeChat/outputs/IVCR_eval'
+split: test
+num_frames: 96
+top_p: 0.8
+dataset: IVCR
+temperature: 1
+batch_size: 4
+gpu_id: 0
+prompt_file: '/data/longshaohua/TimeChat/prompts/tvg_description.txt'
+timestamp: False
+sample_num: -1
+post_check: False
