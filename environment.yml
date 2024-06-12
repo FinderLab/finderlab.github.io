@@ -295,4 +295,4 @@ dependencies:
       - yacs==0.1.8
       - yarl==1.8.2
       - zipp==3.14.0
-prefix: /data/longshaohua/.conda/envs/2_timechat
+prefix: /data/longshaohua/.conda/envs/ivcr

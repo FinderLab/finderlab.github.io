@@ -81,11 +81,11 @@ def val_result(new_result,old_result):
 
 
 if __name__ == "__main__":
-    conv_path = "/data/longshaohua/TimeChat/data_processing/IVCR-200k/test_data/test_conv_data_final.json"
-    video_pre_path = "/data/longshaohua/TimeChat/output/test_for_final_ivcr_video_retrieval/IVCR_train_epoch10_2w_accgrad16_vfrm12_changeloss_001--2024_05_28_11_01/xpool_blip2_cp7_final_recall10/fmt_IVCR_test_f96_result.json"
-    tvg_pre_path = "/data/longshaohua/TimeChat/output/test_for_final_ivcr_tvg/IVCR_train_epoch10_2w_accgrad16_vfrm12_changeloss_001--2024_05_28_11_01/xpool_blip2_cp7_final_top1/fmt_IVCR_test_f96_result.json"
-    video_all_path = "/data/longshaohua/TimeChat/data_processing/IVCR-200k/test_data/xpool-blip2/test_video_dup_data_add_top10_1283.json"
-    tvg_all_path = "/data/longshaohua/TimeChat/data_processing/IVCR-200k/test_data/xpool-blip2/all_test_tvg.json"
+    conv_path = "./data_processing/IVCR-200k/test_data/test_conv_data_final.json"
+    video_pre_path = "./output/test_for_final_ivcr_video_retrieval/IVCR_train_epoch10_2w_accgrad16_vfrm12_changeloss_001--2024_05_28_11_01/xpool_blip2_cp7_final_recall10/fmt_IVCR_test_f96_result.json"
+    tvg_pre_path = "./output/test_for_final_ivcr_tvg/IVCR_train_epoch10_2w_accgrad16_vfrm12_changeloss_001--2024_05_28_11_01/xpool_blip2_cp7_final_top1/fmt_IVCR_test_f96_result.json"
+    video_all_path = "./data_processing/IVCR-200k/test_data/xpool-blip2/test_video_dup_data_add_top10_1283.json"
+    tvg_all_path = "./data_processing/IVCR-200k/test_data/xpool-blip2/all_test_tvg.json"
     tvg_pre_data = read(tvg_pre_path)
     video_pre_path = read(video_pre_path)
     video_all_path = read(video_all_path)

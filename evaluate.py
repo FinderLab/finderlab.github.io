@@ -151,7 +151,7 @@ def main(args):
     cfg = Config(args)
     model_config = cfg.model_cfg
     model_config.device_8bit = args.gpu_id
-    model_config.ckpt = args.timechat_model_path
+    model_config.ckpt = args.ivcr_model_path
     if args.no_lora:
         model_config.lora = False
 
@@ -261,7 +261,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--cfg_path', type=str, default='eval_configs/ivcr.yaml')
-    parser.add_argument('--anno_path', type=str, default='/data/longshaohua/TimeChat/data_processing/IVCR-200k/test_data/xpool-clip/test_tvg.json')
+    parser.add_argument('--anno_path', type=str, default='./data_processing/IVCR-200k/test_data/xpool-clip/test_tvg.json')
     parser.add_argument('--video_path', type=str, default='/data/hanning/data/ivcr_compress')
     parser.add_argument('--model_type', type=str)
     parser.add_argument('--task',default='format_video')  # dvc format_video for dense video captioning; tvg for temporal video grounding; vhd for video highlight detection
@@ -274,9 +274,9 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', type=int, default=4)
     parser.add_argument('--gpu_id', default='0')
     parser.add_argument('--debug', action='store_true', help='the debug mode will only use 10 data samples')
-    parser.add_argument('--prompt_file', default='/data/longshaohua/TimeChat/prompts/video_description.txt')
-    parser.add_argument('--timechat_model_path',
-                        default="/data/longshaohua/TimeChat/timechat/ckpt/timechat/IVCR_train_epoch10_2w_accgrad16_vfrm12_changeloss_001/2024_05_28_11_01/checkpoint_7.pth")
+    parser.add_argument('--prompt_file', default='./ivcr/prompts/video_description.txt')
+    parser.add_argument('--ivcr_model_path',
+                        default="./ckpt/ivcr/IVCR_train_epoch10_2w_accgrad16_vfrm12_changeloss_001/2024_05_28_11_01/checkpoint_7.pth")
     parser.add_argument('--sample_num', type=int, default=-1, help='fast inference by sampling N instances to evaluate')
     parser.add_argument('--example_output', action='store_true', help='output the example results')
     parser.add_argument('--no_lora', action='store_true')

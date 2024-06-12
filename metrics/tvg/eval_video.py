@@ -107,10 +107,10 @@ def wirte(path,data):
         json.dump(data, file, indent=4)
 
 if __name__ == "__main__":
-    pre_path = '/data/longshaohua/TimeChat/output/test_for_final_ivcr_video_retrieval/IVCR_train_epoch10_2w_accgrad16_vfrm12_changeloss_001--2024_05_28_11_01/xpool_blip2_cp7_final_recall10/fmt_IVCR_test_f96_result.json'
-    # gt_path = '/data/longshaohua/TimeChat/data_processing/IVCR-200k/test_data/test_video_dup_data_add_top10_1283_no_zero.json'
-    # gt_path = '/data/longshaohua/TimeChat/data_processing/test_data/test_video_no_zero.json'
-    gt_path = '/data/longshaohua/TimeChat/data_processing/IVCR-200k/test_data/test_video_dup_data_1283.json'
+    pre_path = './output/test_for_final_ivcr_video_retrieval/IVCR_train_epoch10_2w_accgrad16_vfrm12_changeloss_001--2024_05_28_11_01/xpool_blip2_cp7_final_recall10/fmt_IVCR_test_f96_result.json'
+    # gt_path = './data_processing/IVCR-200k/test_data/test_video_dup_data_add_top10_1283_no_zero.json'
+    # gt_path = './data_processing/test_data/test_video_no_zero.json'
+    gt_path = './data_processing/IVCR-200k/test_data/test_video_dup_data_1283.json'
     acc = cal_acc_retrieval(pre_path=pre_path, gt_path=gt_path)
     print(f"pre_path is {pre_path}")
     print(f"gt_path is {gt_path}")

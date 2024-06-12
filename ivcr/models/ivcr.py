@@ -631,11 +631,6 @@ class IVCR(Blip2Base):
             window_size=window_size,
             stride=stride
         )
-        # from utils.logger import setup_logger
-        # from ivcr.common.dist_utils import get_rank
-        # logger = setup_logger('model','/data/longshaohua/TimeChat/',get_rank())
-        # for name,param in model.named_parameters():
-        #     logger.info(name)
 
         ckpt_path = cfg.get("ckpt", "")  # load weights of MiniGPT-4
         if ckpt_path:

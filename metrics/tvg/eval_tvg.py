@@ -36,8 +36,8 @@ def captiondata_modify(steps):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--pred_file", type=str, default="/data/longshaohua/TimeChat/output/test_for_final_ivcr_tvg/IVCR_train_epoch10_2w_accgrad16_vfrm12_changeloss_001--2024_05_28_11_01/xpool_clip_cp7_final_top1/fmt_IVCR_test_f96_result.json")
-    parser.add_argument('--gt_file', type=str, default='/data/longshaohua/TimeChat/data_processing/IVCR-200k/test_data/xpool-clip/test_tvg.json')
+    parser.add_argument("--pred_file", type=str, default="./output/test_for_final_ivcr_tvg/IVCR_train_epoch10_2w_accgrad16_vfrm12_changeloss_001--2024_05_28_11_01/xpool_clip_cp7_final_top1/fmt_IVCR_test_f96_result.json")
+    parser.add_argument('--gt_file', type=str, default='./data_processing/IVCR-200k/test_data/xpool-clip/test_tvg.json')
     parser.add_argument('--sample', action='store_true', default=False)
     args = parser.parse_args()
     '''
@@ -73,7 +73,7 @@ if __name__ == "__main__":
         for qid in pred_timestamps.keys():
             new[qid] = gt_timestamps[qid]
         gt_timestamps = new
-    all_data_len  = read_json('/data/longshaohua/TimeChat/data_processing/IVCR-200k/test_data/test_tvg_dup_new_caption_data_1153.json')
+    all_data_len  = read_json('./data_processing/IVCR-200k/test_data/test_tvg_dup_new_caption_data_1153.json')
     num = len(all_data_len)
     print(f"# pred video timestamps {len(pred_timestamps)}; # gt video timestamps {len(gt_timestamps)}")
     assert len(gt_timestamps) == len(pred_timestamps)
