@@ -1,0 +1,2 @@
+2024-06-12 16:40:07,814 ivcr INFO: Start training
+2024-06-12 16:40:09,289 ivcr.train INFO: Start training epoch 0, 28000 iters per inner epoch.

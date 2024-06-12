@@ -1,0 +1,117 @@
+{
+    "run": {
+        "task": "video_text_pretrain",
+        "lr_sched": "linear_warmup_cosine_lr",
+        "init_lr": 3e-05,
+        "min_lr": 1e-05,
+        "warmup_lr": 1e-06,
+        "weight_decay": 0.05,
+        "max_epoch": 10,
+        "iters_per_epoch": 28000,
+        "batch_size_train": 1,
+        "batch_size_eval": 4,
+        "num_workers": 4,
+        "warmup_steps": 28000,
+        "accum_grad_iters": 4,
+        "seed": 42,
+        "output_dir": "ckpt/timechat/change_number_shuffle_error_final_train_28w",
+        "amp": true,
+        "evaluate": false,
+        "train_splits": [
+            "train"
+        ],
+        "device": "cuda",
+        "world_size": 1,
+        "dist_url": "env://",
+        "distributed": false
+    },
+    "model": {
+        "arch": "IVCR",
+        "image_size": 224,
+        "drop_path_rate": 0,
+        "use_grad_checkpoint": true,
+        "vit_precision": "fp16",
+        "freeze_vit": true,
+        "freeze_qformer": false,
+        "num_query_token": 32,
+        "llama_model": "/data/longshaohua/project/Ask-Anything/Video-LLaMA-2-7B-Finetuned/llama-2-7b-chat-hf",
+        "prompt": "",
+        "model_type": "pretrain_llama_v2",
+        "vit_model": "/data/longshaohua/project/Ask-Anything/eva_vit/eva_vit_g.pth",
+        "q_former_model": "/data/longshaohua/project/Ask-Anything/Q_Former/instruct_blip_vicuna7b_trimmed.pth",
+        "ckpt": "/data/longshaohua/project/Ask-Anything/TimeChat/TimeChat-7b/timechat_7b.pth",
+        "ckpt_2": "/data/longshaohua/project/Ask-Anything/Video-LLaMA-2-7B-Finetuned/VL_LLaMA_2_7B_Finetuned.pth",
+        "frozen_llama_proj": false,
+        "frozen_video_Qformer": false,
+        "fusion_head_layers": 2,
+        "max_frame_pos": 96,
+        "fusion_header_type": "seqTransf",
+        "max_txt_len": 2048,
+        "end_sym": "</s>",
+        "prompt_path": "/data/longshaohua/project/Ask-Anything/TimeChat/prompts/concise_image_description.txt",
+        "prompt_template": "[INST] <<SYS>>\\\\n \\\\n<</SYS>>\\\\n\\\\n{} [/INST]",
+        "lora": true,
+        "lora_inference_mode": false,
+        "qformer_text_input": true,
+        "window_size": 32,
+        "stride": 32
+    },
+    "preprocess": {
+        "vis_processor": {
+            "train": {
+                "name": "alpro_video_train",
+                "image_size": 224,
+                "n_frms": 8
+            },
+            "eval": {
+                "name": "alpro_video_eval",
+                "image_size": 224,
+                "n_frms": 8
+            }
+        },
+        "text_processor": {
+            "train": {
+                "name": "blip_caption"
+            },
+            "eval": {
+                "name": "blip_caption"
+            }
+        }
+    },
+    "datasets": {
+        "charades_instruct": {
+            "data_type": "video",
+            "build_info": {
+                "anno_dir": "data/Charades/instruct_tvg_12.4k_charades.json",
+                "videos_dir": "data/"
+            }
+        },
+        "ivcr_instruct": {
+            "data_type": "video",
+            "build_info": {
+                "anno_dir": "/data/longshaohua/TimeChat/data_processing/IVCR-200k/final_train_data.json",
+                "videos_dir": "/data/hanning/data/ivcr_compress"
+            },
+            "vis_processor": {
+                "train": {
+                    "name": "alpro_video_train",
+                    "n_frms": 96,
+                    "image_size": 224
+                }
+            },
+            "text_processor": {
+                "train": {
+                    "name": "blip_caption"
+                }
+            },
+            "num_video_query_token": 32,
+            "tokenizer_name": "/data/longshaohua/project/Ask-Anything/Video-LLaMA-2-7B-Finetuned/llama-2-7b-chat-hf",
+            "model_type": "llama_v2",
+            "num_frm": 96,
+            "v_frms": 12,
+            "sample_type": "rand",
+            "max_txt_len": 2048,
+            "stride": 32
+        }
+    }
+}
