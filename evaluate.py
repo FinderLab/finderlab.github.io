@@ -14,11 +14,12 @@ from ivcr.common.registry import registry
 from ivcr.conversation.conversation_video_batch import Chat, Conversation, default_conversation, SeparatorStyle, \
     conv_llava_llama_2
 import decord
-
+from vllm import LLM
 decord.bridge.set_bridge('torch')
 import logging
 from torchvision.transforms.functional import InterpolationMode
 
+from transformers import LlamaTokenizer
 from torchvision import transforms
 import pdb
 import json
@@ -61,12 +62,18 @@ def save_result(args, output_dir, results, split_name='test', format=False):
 
 
 def format_intent(gcap):
-    start_index = gcap.index('.') + 1
-    first_part = gcap[:start_index]
-    sub_gcap = gcap[start_index:]
-    second_index = sub_gcap.index('.') + 1
-    second_part = sub_gcap[:second_index]
-    return first_part,second_part
+    if '.' in gcap:
+        start_index = gcap.index('.') + 1
+        first_part = gcap[:start_index]
+        sub_gcap = gcap[start_index:]
+        if '.' in sub_gcap:
+            second_index = sub_gcap.index('.') + 1
+            second_part = sub_gcap[:second_index]
+            return first_part,second_part
+        else:
+            return -1,-1
+    else:
+        return -1,-1
 
 def format_video(datas):
     fmt_datas = {}
@@ -75,8 +82,10 @@ def format_video(datas):
         query = jterm["query"]
         gcap = jterm["generated_cap"]
         intent,video_id = format_intent(gcap=gcap)
-
-        fmt_datas[i] = {"video_id": video_id,"intent":intent, "query": query, "vid": vid}
+        if intent==-1 and video_id == -1:
+            continue
+        else:
+            fmt_datas[i] = {"video_id": video_id,"intent":intent, "query": query, "vid": vid}
     return fmt_datas
 
 def format_tvg(datas):
@@ -89,6 +98,8 @@ def format_tvg(datas):
         qid = int(jterm["id"])
         timestamps = format_tvg_output(gcap)
         intent,second_part = format_intent(gcap=gcap)
+        if intent == -1:
+            continue
         if len(timestamps) == 0:
             cnt += 1
             print(vid, query + "\n", gcap, "\n")
@@ -119,14 +130,14 @@ def generate(chat, gr_videos, user_messages, num_beams, temperature, top_p, n_fr
     for user_message, chat_state in zip(user_messages, chat_states):
         chat.ask(user_message, chat_state)
 
-    responses = chat.answer(convs=chat_states,
+    responses,interval,_= chat.answer(convs=chat_states,
                             img_lists=img_lists,
                             num_beams=num_beams,
                             temperature=temperature,
                             top_p=top_p,
                             max_new_tokens=512,
-                            max_length=3000)[0]
-    return responses, chat_states, img_lists
+                            max_length=3000)
+    return responses, chat_states, img_lists,interval
 
 
 def main(args):
@@ -162,10 +173,12 @@ def main(args):
     logging.info(message)
 
     model_cls = registry.get_model_class(model_config.arch)
-    model = model_cls.from_config(model_config).to('cuda:{}'.format(args.gpu_id))
+    tokenizer = LlamaTokenizer.from_pretrained("/data/longshaohua/project/Ask-Anything/Video-LLaMA-2-7B-Finetuned/llama-2-7b-chat-hf", use_fast=False)
+    model = model_cls.from_config(model_config,tokenizer).to('cuda:{}'.format(args.gpu_id))
     model.eval()
     vis_processor_cfg = cfg.datasets_cfg.ivcr_instruct.vis_processor.train
     vis_processor = registry.get_processor_class(vis_processor_cfg.name).from_config(vis_processor_cfg)
+    # llm = LLM(args.ivcr_model_path)
     chat = Chat(model, vis_processor, device='cuda:{}'.format(args.gpu_id))
     print('Initialization Finished')
 
@@ -198,6 +211,7 @@ def main(args):
     bz = args.batch_size
     # evaluate using batch
     epoch = ceil(len(vnames) / bz)
+    all_time = 0
     for i in tqdm(range(epoch)):
         sid = i * bz
         eid = min((i + 1) * bz, len(vnames))
@@ -212,7 +226,8 @@ def main(args):
                 prompts.append(final_prompt.format(captions[idx].strip('.')))
             else:
                 prompts.append(final_prompt)
-        outputs, chat_states, img_lists = generate(chat, paths, prompts, num_beams, temperature, top_p, n_frms, args.task)
+        outputs, chat_states, img_lists, interval = generate(chat, paths, prompts, num_beams, temperature, top_p, n_frms, args.task)
+        all_time += interval
         for j, (output, chat_state) in enumerate(zip(outputs, chat_states)):
             if args.task == "tvg":
                 results.append({
@@ -234,7 +249,7 @@ def main(args):
                 print(chat_state.get_prompt())
                 print(results[-1]["generated_cap"])
                 print('*' * 50)
-
+    print(f"大模型总的交互时间{all_time:.2f}")
     # save results
     save_result(args, args.output_dir, results, args.split)
 
@@ -261,12 +276,12 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--cfg_path', type=str, default='eval_configs/ivcr.yaml')
-    parser.add_argument('--anno_path', type=str, default='./data_processing/IVCR-200k/test_data/xpool-clip/test_tvg.json')
+    parser.add_argument('--anno_path', type=str, default='/data/longshaohua/TimeChat/data_processing/IVCR-200k/test_data/T-MASS/test_video_dup_data_add_top10_no_zero.json')
     parser.add_argument('--video_path', type=str, default='/data/hanning/data/ivcr_compress')
     parser.add_argument('--model_type', type=str)
     parser.add_argument('--task',default='format_video')  # dvc format_video for dense video captioning; tvg for temporal video grounding; vhd for video highlight detection
     parser.add_argument('--dataset', default='IVCR')
-    parser.add_argument('--output_dir', default='./output/test_for_final_ivcr_tvg/IVCR_train_epoch10_2w_accgrad16_vfrm12_changeloss_001--2024_05_28_11_01/xpool_clip_cp7_final_top1')
+    parser.add_argument('--output_dir', default='./output/test_for_final_ivcr_VR/all_data_danshi_qiehuan_vr_template/2024_09_25_20_34/Tmass/cp4')
     parser.add_argument('--split', default='test')
     parser.add_argument('--num_frames', type=int, default=96)
     parser.add_argument('--top_p', type=float, default=0.8)
@@ -276,7 +291,7 @@ if __name__ == "__main__":
     parser.add_argument('--debug', action='store_true', help='the debug mode will only use 10 data samples')
     parser.add_argument('--prompt_file', default='./ivcr/prompts/video_description.txt')
     parser.add_argument('--ivcr_model_path',
-                        default="./ckpt/ivcr/IVCR_train_epoch10_2w_accgrad16_vfrm12_changeloss_001/2024_05_28_11_01/checkpoint_7.pth")
+                        default="/data/longshaohua/IVCR_2/ivcr/ckpt/timechat/all_data_danshi_qiehuan_vr_template/2024_09_25_20_34/checkpoint_4.pth")
     parser.add_argument('--sample_num', type=int, default=-1, help='fast inference by sampling N instances to evaluate')
     parser.add_argument('--example_output', action='store_true', help='output the example results')
     parser.add_argument('--no_lora', action='store_true')

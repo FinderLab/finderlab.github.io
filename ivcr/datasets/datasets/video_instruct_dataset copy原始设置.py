@@ -98,7 +98,6 @@ class Video_Instruct_Dataset(BaseDataset):
         return full_video_fp,index
 
     def __getitem__(self, index):
-        IMAGE_PATCH_TOKEN_ID = self.tokenizer.get_vocab()[VIDEO_INDEX_FIRST]
         num_retries = 10  # skip error videos
         for _ in range(num_retries):
             try:
@@ -338,7 +337,6 @@ def eval_video_retireval():
     question = conv + prompt_sentence
     return question
 
-
 def preprocess_video_retireval_multimodal(
         conversation_list,
         cur_token_len:int,
@@ -352,7 +350,6 @@ def preprocess_video_retireval_multimodal(
         sentence = f"{video_index_list[i]}:" + DEFAULT_VIDEO_START_TOKEN + DEFAULT_IMAGE_PATCH_TOKEN * cur_token_len[i] + DEFAULT_VIDEO_END_TOKEN + '.'
         conv += sentence
     
-
     question = "Question:" + conversation_list[0]['q']
     question += conv
 

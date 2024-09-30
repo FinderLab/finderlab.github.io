@@ -31,13 +31,13 @@ class BaseTask:
     def setup_task(cls, **kwargs):
         return cls()
 
-    def build_model(self, cfg):
+    def build_model(self, cfg,tokenizer):
         model_config = cfg.model_cfg
 
         model_cls = registry.get_model_class(model_config.arch)
-        return model_cls.from_config(model_config)
+        return model_cls.from_config(model_config,tokenizer)
 
-    def build_datasets(self, cfg):
+    def build_datasets(self, cfg,tokenizer):
         """
         Build a dictionary of datasets, keyed by split 'train', 'valid', 'test'.
         Download dataset and annotations automatically if not exist.
@@ -59,7 +59,7 @@ class BaseTask:
                 continue
             dataset_config = datasets_config[name]
 
-            builder = registry.get_builder_class(name)(dataset_config)
+            builder = registry.get_builder_class(name)(dataset_config,tokenizer)
             dataset = builder.build_datasets()
             
             dataset['train'].name = name
@@ -218,20 +218,36 @@ class BaseTask:
             if i >= iters_per_epoch:
                 break
             samples = next(data_loader)
-            samples.update(
-                {
-                    "epoch": inner_epoch,
-                    "num_iters_per_epoch": iters_per_epoch,
-                    "iters": i,
-                }
-            )
+            # samples.update(
+            #     {
+            #         "epoch": inner_epoch,
+            #         "num_iters_per_epoch": iters_per_epoch,
+            #         "iters": i,
+            #     }
+            # )
             lr_scheduler.step(cur_epoch=inner_epoch, cur_step=i)
-
+            
             with accelerator.accumulate(model):
                 loss = self.train_step(model=model, samples=samples,flag=flag)
                 accelerator.backward(loss)
                 optimizer.step()
                 optimizer.zero_grad()
+            
+            # with torch.cuda.amp.autocast(enabled=use_amp):
+            #     loss = self.train_step(model=model, samples=samples,flag=flag)
+            # if use_amp:
+            #     scaler.scale(loss).backward()
+            # else:
+            #     loss.backward()
+            # update gradients every accum_grad_iters iterations
+            # if (i + 1) % accum_grad_iters == 0:
+            #     if use_amp:
+            #         scaler.step(optimizer)
+            #         scaler.update()                     
+            #     else:
+            #         optimizer.step()
+            #     optimizer.zero_grad()
+
             metric_logger.update(loss=loss.item())
             metric_logger.update(lr=optimizer.param_groups[0]["lr"])
 

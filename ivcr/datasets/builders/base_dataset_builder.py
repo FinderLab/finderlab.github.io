@@ -25,7 +25,7 @@ from ivcr.processors.base_processor import BaseProcessor
 class BaseDatasetBuilder:
     train_dataset_cls, eval_dataset_cls = None, None
 
-    def __init__(self, cfg=None):
+    def __init__(self, cfg=None,tokenizer = None):
         super().__init__()
 
         if cfg is None:
@@ -36,7 +36,7 @@ class BaseDatasetBuilder:
         else:
             # when called from task.build_dataset()
             self.config = cfg
-
+        self.tokenizer = tokenizer
         self.data_type = self.config.data_type
 
         self.vis_processors = {"train": BaseProcessor(), "eval": BaseProcessor()}

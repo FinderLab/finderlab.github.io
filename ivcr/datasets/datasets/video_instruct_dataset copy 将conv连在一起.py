@@ -34,10 +34,8 @@ video_conversation = Conversation(
 )
 
 llama_v2_video_conversation = Conversation(
-    # system="You are a helpful language and vision assistant. "
-    #        "You are able to understand the visual content that the user provides, "
-    #        "and assist the user with a variety of tasks using natural language.",
-    system=" ",
+    system="You are a helpful language and vision assistant.You are able to understand the visual content that the user provides,and assist the user with a variety of tasks using natural language.",
+    # system=" ",
     roles=("USER", "ASSISTANT"),
     messages=(),
     offset=0,
@@ -98,121 +96,141 @@ class Video_Instruct_Dataset(BaseDataset):
         return full_video_fp,index
 
     def __getitem__(self, index):
-        IMAGE_PATCH_TOKEN_ID = self.tokenizer.get_vocab()[VIDEO_INDEX_FIRST]
-        num_retries = 10  # skip error videos
+        num_retries = 1  # skip error videos
+        result = {
+            "image": [],
+            "text_input": [],
+            "labels": [],
+            "type": [],
+            "timestamps": [],
+            'category':[],
+            'for_test_data':[],
+            'gt_value':[]
+        }
         for _ in range(num_retries):
             try:
-                sample = self.annotation[index]
-                sam = dict(q=sample['Q'],
-                           a=sample['A'])
-                conversation_list = [sam]
-                if sample.get('type') == 1:
-                    cur_n_frms = []
-                    video_path_list,gt_value = self._get_video_list_path(sample)
-                    video = []
-                    msgs = []
-                    new_msgs = []
-                    for path in video_path_list:
-                        videos, msg, new_msg  = load_video(
-                            video_path=path,
-                            n_frms=self.v_frm,
+                samples = self.annotation[index]
+                for i, sample in enumerate(samples):
+                    sam = dict(q=sample['Q'],
+                            a=sample['A'])
+                    conversation_list = [sam]
+                    if sample.get('type') == 1:
+                        cur_n_frms = []
+                        video_path_list,gt_value = self._get_video_list_path(sample)
+                        video = []
+                        msgs = []
+                        new_msgs = []
+                        for path in video_path_list:
+                            videos, msg, new_msg  = load_video(
+                                video_path=path,
+                                n_frms=self.v_frm,
+                                height=self.resize_size,
+                                width=self.resize_size,
+                                sampling=self.sample_type, return_msg=True,
+                                is_video_clip = False,
+                            )
+                            videos = self.transform(videos)
+                            cur_n_frms.append(videos.shape[1])
+                            video.append(videos)
+                            msgs.append(msg)
+                            new_msgs.append(new_msg)
+                        
+                        cur_token_len = [self.num_video_query_token * math.ceil(
+                        cur_n_frm / self.stride) if self.stride > 0 else self.num_video_query_token for cur_n_frm in cur_n_frms]
+                        for_test_data = preprocess_for_test(copy.deepcopy(conversation_list),self.tokenizer)
+                        sources = preprocess_video_retireval_multimodal(copy.deepcopy(conversation_list), cur_token_len=cur_token_len,
+                                                msgs=new_msgs)
+                        new_sources = convert_source_vicuna_format(sources)
+                        data_dict = preprocess_for_llama_v2(
+                            new_sources,
+                            self.tokenizer,
+                            self.max_txt_len,
+                            flag = i
+                        )
+                        data_dict = dict(input_ids=data_dict["input_ids"][0],
+                                    labels=data_dict["labels"][0],
+                                    gt_value = gt_value)
+                        data_dict['image'] = videos
+                        all_timestamps = []
+                        messagees = []
+                        for i,msg in enumerate(msgs):
+                            all_timestamp = msg.split('sampled at')[1].replace('seconds.','').strip().split(',')
+                            all_timestamp = [f'This frame is sampled at {t.strip()} second.' for t in all_timestamp]
+                            all_timestamp = self.tokenizer(
+                                all_timestamp,
+                                return_tensors="pt",
+                                padding="longest",
+                                max_length=32,
+                                truncation=True,
+                            )
+                            all_timestamps.append(all_timestamp)
+                            # messagees.append(msg)
+                        # data_dict['message'] = messagees
+                        data_dict['timestamps'] = all_timestamps
+
+                    else:
+                        video_path,gt_value = self._get_video_path(sample)
+                        video, msg = load_video(
+                            video_path=video_path,
+                            n_frms=self.num_frm,
                             height=self.resize_size,
                             width=self.resize_size,
                             sampling=self.sample_type, return_msg=True,
-                            is_video_clip = False,
+                            is_video_clip = True,
                         )
-                        videos = self.transform(videos)
-                        cur_n_frms.append(videos.shape[1])
-                        video.append(videos)
-                        msgs.append(msg)
-                        new_msgs.append(new_msg)
-                    
-                    cur_token_len = [self.num_video_query_token * math.ceil(
-                    cur_n_frm / self.stride) if self.stride > 0 else self.num_video_query_token for cur_n_frm in cur_n_frms]
-                    for_test_data = preprocess_for_test(copy.deepcopy(conversation_list),self.tokenizer)
-                    sources = preprocess_video_retireval_multimodal(copy.deepcopy(conversation_list), cur_token_len=cur_token_len,
-                                            msgs=new_msgs)
-                    new_sources = convert_source_vicuna_format(sources)
-                    data_dict = preprocess_for_llama_v2(
-                        new_sources,
-                        self.tokenizer,
-                        self.max_txt_len
-                    )
-                    data_dict = dict(input_ids=data_dict["input_ids"][0],
-                                 labels=data_dict["labels"][0],
-                                 gt_value = gt_value)
-                    data_dict['image'] = videos
-                    all_timestamps = []
-                    messagees = []
-                    for i,msg in enumerate(msgs):
-                        all_timestamp = msg.split('sampled at')[1].replace('seconds.','').strip().split(',')
-                        all_timestamp = [f'This frame is sampled at {t.strip()} second.' for t in all_timestamp]
-                        all_timestamp = self.tokenizer(
-                            all_timestamp,
+                        video = self.transform(video)
+                        if 'cn' in self.data_type:
+                            msg = ""
+                        cur_n_frm = video.shape[1]
+                        cur_token_len = self.num_video_query_token * math.ceil(
+                        cur_n_frm / self.stride) if self.stride > 0 else self.num_video_query_token
+                        for_test_data = preprocess_for_test(copy.deepcopy(conversation_list),self.tokenizer)
+                        sources = preprocess_multimodal(copy.deepcopy(conversation_list), None, cur_token_len=cur_token_len,
+                                                    msg=msg)
+                        new_sources = convert_source_vicuna_format(sources)
+                        
+                        if self.model_type == 'vicuna':
+                            data_dict = preprocess(
+                                new_sources,
+                                self.tokenizer,
+                                self.max_txt_len,
+                            )
+                        elif self.model_type == 'llama_v2':
+                            data_dict = preprocess_for_llama_v2(
+                                new_sources,
+                                self.tokenizer,
+                                self.max_txt_len,
+                                flag = i
+                            )
+                        else:
+                            print('not support')
+                            raise ('not support')
+                            
+                        data_dict = dict(input_ids = data_dict["input_ids"][0],
+                                    labels = data_dict["labels"][0],
+                                    gt_value = gt_value)
+                        
+                        data_dict['image'] = video
+                        all_timestamps = msg.split('at')[1].replace('seconds.', '').strip().split(
+                        ',')  # extract timestamps from msg
+                        all_timestamps = [f'This frame is sampled at {t.strip()} second.' for t in all_timestamps]
+                        all_timestamps = self.tokenizer(
+                            all_timestamps,
                             return_tensors="pt",
                             padding="longest",
                             max_length=32,
                             truncation=True,
                         )
-                        all_timestamps.append(all_timestamp)
-                        # messagees.append(msg)
-                    # data_dict['message'] = messagees
-                    data_dict['timestamps'] = all_timestamps
-
-                else:
-                    video_path,gt_value = self._get_video_path(sample)
-                    video, msg = load_video(
-                        video_path=video_path,
-                        n_frms=self.num_frm,
-                        height=self.resize_size,
-                        width=self.resize_size,
-                        sampling=self.sample_type, return_msg=True,
-                        is_video_clip = True,
-                    )
-                    video = self.transform(video)
-                    if 'cn' in self.data_type:
-                        msg = ""
-                    cur_n_frm = video.shape[1]
-                    cur_token_len = self.num_video_query_token * math.ceil(
-                    cur_n_frm / self.stride) if self.stride > 0 else self.num_video_query_token
-                    for_test_data = preprocess_for_test(copy.deepcopy(conversation_list),self.tokenizer)
-                    sources = preprocess_multimodal(copy.deepcopy(conversation_list), None, cur_token_len=cur_token_len,
-                                                msg=msg)
-                    new_sources = convert_source_vicuna_format(sources)
-                    if self.model_type == 'vicuna':
-                        data_dict = preprocess(
-                            new_sources,
-                            self.tokenizer,
-                            self.max_txt_len
-                        )
-                    elif self.model_type == 'llama_v2':
-                        data_dict = preprocess_for_llama_v2(
-                            new_sources,
-                            self.tokenizer,
-                            self.max_txt_len
-                        )
-                    
-                    else:
-                        print('not support')
-                        raise ('not support')
-                        
-                    data_dict = dict(input_ids=data_dict["input_ids"][0],
-                                 labels=data_dict["labels"][0],
-                                 gt_value = gt_value)
-                    
-                    data_dict['image'] = video
-                    all_timestamps = msg.split('at')[1].replace('seconds.', '').strip().split(
-                    ',')  # extract timestamps from msg
-                    all_timestamps = [f'This frame is sampled at {t.strip()} second.' for t in all_timestamps]
-                    all_timestamps = self.tokenizer(
-                        all_timestamps,
-                        return_tensors="pt",
-                        padding="longest",
-                        max_length=32,
-                        truncation=True,
-                    )
-                    data_dict['timestamps'] = all_timestamps
-                for_test_data = sample.get('text_id')
+                        data_dict['timestamps'] = all_timestamps
+                    for_test_data = sample.get('text_id')
+                    result['image'].append(video)
+                    result['text_input'].append(data_dict['input_ids'])
+                    result['labels'].append(data_dict['labels'])
+                    result['type'].append('video')
+                    result['timestamps'].append(data_dict['timestamps'])
+                    result['category'].append(sample['type'])
+                    result['for_test_data'].append(for_test_data)
+                    result['gt_value'].append(data_dict['gt_value'])
             except:
                 print(f"Failed to load examples with video: {video_path}. "
                       f"Will randomly sample an example as a replacement.")
@@ -223,73 +241,67 @@ class Video_Instruct_Dataset(BaseDataset):
             raise RuntimeError(f"Failed to fetch video after {num_retries} retries.")
         # "image_id" is kept to stay compatible with the COCO evaluation format
         
-        return {
-            "image": video,
-            "text_input": data_dict["input_ids"],
-            "labels": data_dict["labels"],
-            "type": 'video',
-            "timestamps": data_dict['timestamps'],
-            'category':sample.get('type'),
-            'for_test_data':for_test_data,
-            'gt_value':data_dict['gt_value']
-            # 'message':data_dict['message']
-        }
+        return result
 
     def __len__(self):
         return len(self.annotation)
 
     def collater(self, instances):
-        input_ids, labels, timestamps,category,for_test_data,gt_value = tuple([instance[key] for instance in instances]
+        input_ids, labels, timestamps,categorys,for_test_data,gt_value = tuple([instance[key] for instance in instances]
                                               for key in ("text_input", "labels", "timestamps","category","for_test_data","gt_value"))
-        input_ids = torch.nn.utils.rnn.pad_sequence(
-            input_ids,
-            batch_first=True,
-            padding_value=self.tokenizer.pad_token_id)
+        all_batch = []
         
-        labels = torch.nn.utils.rnn.pad_sequence(labels,
-                                                 batch_first=True,
-                                                 padding_value=IGNORE_INDEX)
-        
-        batch = dict(
-            input_ids=input_ids,
-            labels=labels,
-            attention_mask=input_ids.ne(self.tokenizer.pad_token_id),
-            category=category,
-            for_test_data = for_test_data,
-            gt_value = gt_value
-            # message = message[0],
-        )
-        category = category[0]
-        if category == 1:
-            images = [instance['image'] for instance in instances]
-            batch['images'] = images
-            batch_timestamps = []
-            for timestamp in timestamps[0]:
-                batch_timestamps.append(
-                    {'input_ids': timestamp['input_ids'], 'attention_mask': timestamp['attention_mask']})
-            batch['timestamps'] = batch_timestamps
-        else:
-            images = [instance['image'] for instance in instances]
-            if all(x is not None and x.shape == images[0].shape for x in
-                   images):  # nb of frames of all videos is ${num_frm}
-                batch['images'] = torch.stack(images)
-                timestamps_input_ids, timestamps_attention_mask = [], []
-                for timestamp in timestamps:
-                    n_frm = timestamp['input_ids'].shape[0]
-                    for i in range(n_frm):
-                        timestamps_input_ids.append(timestamp['input_ids'][i])
-                        timestamps_attention_mask.append(timestamp['attention_mask'][i])
-                timestamps_input_ids = torch.nn.utils.rnn.pad_sequence(
-                    timestamps_input_ids,
-                    batch_first=True,
-                    padding_value=self.tokenizer.pad_token_id)
-                timestamps_attention_mask = torch.nn.utils.rnn.pad_sequence(
-                    timestamps_attention_mask,
-                    batch_first=True,
-                    padding_value=0)
-                batch['timestamps'] = {'input_ids': timestamps_input_ids, 'attention_mask': timestamps_attention_mask}
-        batch['conv_type'] = 'multi'
-        return batch
+        for i in range(len(categorys[0])):
+            input_id = torch.nn.utils.rnn.pad_sequence(
+                [input_ids[0][i]],
+                batch_first=True,
+                padding_value=self.tokenizer.pad_token_id)
+            
+            label = torch.nn.utils.rnn.pad_sequence([labels[0][i]],
+                                                    batch_first=True,
+                                                    padding_value=IGNORE_INDEX)
+            batch = dict(
+                input_ids=input_id,
+                labels=label,
+                attention_mask=input_id.ne(self.tokenizer.pad_token_id),
+                category=categorys[0][i],
+                for_test_data = for_test_data,
+                gt_value = gt_value
+                # message = message[0],
+            )
+            category = categorys[0][i]
+            if category == 1:
+                images = [instance['image'][i] for instance in instances]
+                batch['images'] = images
+                batch_timestamps = []
+                for timestamp in timestamps[0][i]:
+                    batch_timestamps.append(
+                        {'input_ids': timestamp['input_ids'], 'attention_mask': timestamp['attention_mask']})
+                batch['timestamps'] = batch_timestamps
+            else:
+                images = [instance['image'][i] for instance in instances]
+                if all(x is not None and x.shape == images[0].shape for x in
+                    images):  # nb of frames of all videos is ${num_frm}
+                    batch['images'] = torch.stack(images)
+                    timestamps_input_ids, timestamps_attention_mask = [], []
+                    for timestamp in [timestamps[0][i]]:
+                        n_frm = timestamp['input_ids'].shape[0]
+                        for j in range(n_frm):
+                            timestamps_input_ids.append(timestamp['input_ids'][j])
+                            timestamps_attention_mask.append(timestamp['attention_mask'][j])
+                    timestamps_input_ids = torch.nn.utils.rnn.pad_sequence(
+                        timestamps_input_ids,
+                        batch_first=True,
+                        padding_value=self.tokenizer.pad_token_id)
+                    timestamps_attention_mask = torch.nn.utils.rnn.pad_sequence(
+                        timestamps_attention_mask,
+                        batch_first=True,
+                        padding_value=0)
+                    batch['timestamps'] = {'input_ids': timestamps_input_ids, 'attention_mask': timestamps_attention_mask}
+            batch['conv_type'] = 'multi'
+            all_batch.append(batch)
+
+        return all_batch
 
 
 def convert_source_vicuna_format(sources):
@@ -338,7 +350,6 @@ def eval_video_retireval():
     question = conv + prompt_sentence
     return question
 
-
 def preprocess_video_retireval_multimodal(
         conversation_list,
         cur_token_len:int,
@@ -352,7 +363,6 @@ def preprocess_video_retireval_multimodal(
         sentence = f"{video_index_list[i]}:" + DEFAULT_VIDEO_START_TOKEN + DEFAULT_IMAGE_PATCH_TOKEN * cur_token_len[i] + DEFAULT_VIDEO_END_TOKEN + '.'
         conv += sentence
     
-
     question = "Question:" + conversation_list[0]['q']
     question += conv
 
@@ -487,6 +497,7 @@ def preprocess_for_llama_v2(
         sources: Sequence[str],
         tokenizer: transformers.PreTrainedTokenizer,
         max_txt_len: int = 512,
+        flag: int=0
 ) -> Dict:
     """
     Given a list of sources, each is a conversation list. This transform:
@@ -500,8 +511,8 @@ def preprocess_for_llama_v2(
     conv = copy.deepcopy(llama_v2_video_conversation.copy())
     roles = {"human": conv.roles[0], "gpt": conv.roles[1]}
     for source in sources:
-        header = f"<s>[INST] <<SYS>>\n{conv.system}\n</SYS>>\n\n"
-
+        if flag!=0:
+            conv.system = " "
         if roles[source[0]["from"]] != conv.roles[0]:
             # Skip the first one if it is not from human
             source = source[1:]
@@ -511,8 +522,8 @@ def preprocess_for_llama_v2(
             assert role == conv.roles[j % 2]
             conv.append_message(role, sentence["value"])
         conversations.append(conv.get_prompt())
-        logger = logging.getLogger('ivcr.train')
-        logger.info(conv.get_prompt())
+        # logger = logging.getLogger('ivcr.train')
+        # logger.info(conv.get_prompt())
         # print(f"conversations: {conversations}")
 
     input_ids = tokenizer(

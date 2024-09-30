@@ -11,6 +11,7 @@ import ivcr.tasks as tasks
 from ivcr.common.config import Config
 from ivcr.common.dist_utils import get_rank, init_distributed_mode, is_main_process
 # from ivcr.common.logger import setup_logger
+from transformers import LlamaTokenizer
 from ivcr.common.optims import (
     LinearWarmupCosineLRScheduler,
     LinearWarmupStepLRScheduler,
@@ -24,6 +25,7 @@ from ivcr.datasets.builders import *
 from ivcr.models import *
 from ivcr.processors import *
 from ivcr.runners import *
+from ivcr.common.constant import VIDEO_INDEX_SECOND
 from ivcr.tasks import *
 from accelerate import Accelerator
 from torch.utils.data import DataLoader
@@ -82,8 +84,11 @@ def main():
     cfg.pretty_print()
 
     task = tasks.setup_task(cfg)
-    datasets = task.build_datasets(cfg)
-    model = task.build_model(cfg)
+    tokenizer = LlamaTokenizer.from_pretrained("/data/longshaohua/project/Ask-Anything/Video-LLaMA-2-7B-Finetuned/llama-2-7b-chat-hf", use_fast=False)
+    
+    model = task.build_model(cfg,tokenizer)
+    datasets = task.build_datasets(cfg,tokenizer)
+    
 
     runner = get_runner_class(cfg)(
         cfg=cfg, job_id=job_id, task=task, model=model, datasets=datasets,accelerator=accelerator

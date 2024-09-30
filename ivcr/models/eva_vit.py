@@ -436,7 +436,7 @@ def create_eva_vit_g(
         cached_file = url_or_filename
     else:
         raise RuntimeError("checkpoint url or path is invalid")
-    state_dict = torch.load(cached_file, map_location="cpu")
+    state_dict = torch.load(cached_file, map_location="cpu",weights_only=True)
     interpolate_pos_embed(model,state_dict)
 
     incompatible_keys = model.load_state_dict(state_dict, strict=False)

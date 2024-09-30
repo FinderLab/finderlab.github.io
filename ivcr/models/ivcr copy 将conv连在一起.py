@@ -147,7 +147,7 @@ class IVCR(Blip2Base):
         if self.low_resource:
             self.llama_model = LlamaForCausalLM.from_pretrained(
                 llama_model,
-                load_in_8bit=True,
+                load_in_4bit=True,
                 # device_map={'': device_8bit}
             )
         else:
@@ -167,7 +167,7 @@ class IVCR(Blip2Base):
                 self.llama_model = LlamaForCausalLM.from_pretrained(
                     llama_model,
                     # torch_dtype=torch.float16,
-                    load_in_8bit=True
+                    load_in_4bit=True
                 )
         self.llama_tokenizer.add_tokens([DEFAULT_IMAGE_PATCH_TOKEN], special_tokens=True)
         self.IMAGE_PATCH_TOKEN_ID = self.llama_tokenizer.get_vocab()[DEFAULT_IMAGE_PATCH_TOKEN]
@@ -394,223 +394,175 @@ class IVCR(Blip2Base):
         else:
             return img_embeds, atts_img
     
-    def forward(self, samples,flag):
-        # for samples in samples_list:
-        if 'conv_type' in samples.keys() and samples['conv_type'] == 'multi':
-            im_patch_token_id = self.IMAGE_PATCH_TOKEN_ID
-            image = samples["images"]
-            input_ids = samples['input_ids']
-            category = samples['category']
-            clip_num_patch_tokens = None
-            img_embeds = None
-            img_embeds_list, atts_img_list, num_patch_tokens_list = [], [], []
-            if isinstance(image, list):  # nb of frames of some videos is less than ${num_frm}
-                assert isinstance(samples["timestamps"], list)
-                for img, timestamp in zip(image[0], samples["timestamps"]):
-                    img = img.unsqueeze(0)
-                    if len(img.size()) == 4:
+    def forward(self, samples_list,flag):
+        attention_all_mask = []
+        input_all_embeds = []
+        all_targets = []
+        for samples in samples_list:
+            if 'conv_type' in samples.keys() and samples['conv_type'] == 'multi':
+                im_patch_token_id = self.IMAGE_PATCH_TOKEN_ID
+                image = samples["images"]
+                input_ids = samples['input_ids']
+                category = samples['category']
+                clip_num_patch_tokens = None
+                img_embeds = None
+                img_embeds_list, atts_img_list, num_patch_tokens_list = [], [], []
+                if isinstance(image, list):  # nb of frames of some videos is less than ${num_frm}
+                    assert isinstance(samples["timestamps"], list)
+                    for img, timestamp in zip(image[0], samples["timestamps"]):
+                        img = img.unsqueeze(0)
+                        if len(img.size()) == 4:
+                            time = 1
+                            img = einops.repeat(img, 'b c h w -> b c t h w', t=time)
+                        num_patch_tokens = self.num_video_query_token * math.ceil(
+                            img.shape[2] / self.stride) if self.stride > 0 else self.num_video_query_token
+                        img_embeds, atts_img = self.encode_videoQformer_visual(img, timestamp=timestamp,is_video_clip=False)
+                        img_embeds_list.append(img_embeds)
+                        atts_img_list.append(atts_img)
+                        num_patch_tokens_list.append(num_patch_tokens)
+                    img_embeds = img_embeds_list
+                    atts_img = atts_img_list
+                else:  # nb of frames of all videos is ${num_frm}
+                    if len(image.size()) == 4:
                         time = 1
-                        img = einops.repeat(img, 'b c h w -> b c t h w', t=time)
-                    num_patch_tokens = self.num_video_query_token * math.ceil(
-                        img.shape[2] / self.stride) if self.stride > 0 else self.num_video_query_token
-                    img_embeds, atts_img = self.encode_videoQformer_visual(img, timestamp=timestamp,is_video_clip=False)
-                    img_embeds_list.append(img_embeds)
-                    atts_img_list.append(atts_img)
-                    num_patch_tokens_list.append(num_patch_tokens)
-                img_embeds = img_embeds_list
-                atts_img = atts_img_list
-            else:  # nb of frames of all videos is ${num_frm}
-                if len(image.size()) == 4:
-                    time = 1
-                    image = einops.repeat(image, 'b c h w -> b c t h w', t=time)
-                clip_num_patch_tokens = self.num_video_query_token * math.ceil(
-                    image.shape[2] / self.stride) if self.stride > 0 else self.num_video_query_token  #96
-                img_embeds, atts_img = self.encode_videoQformer_visual(image, timestamp=samples["timestamps"],is_video_clip=True)
-            temp_input_ids = copy.deepcopy(input_ids)
-            temp_input_ids[temp_input_ids == im_patch_token_id] = 0
-            if self.lora:
-                temp_input_embedding = self.llama_model.get_base_model().model.embed_tokens(temp_input_ids)
-            else:
-                temp_input_embedding = self.llama_model.model.embed_tokens(temp_input_ids)
+                        image = einops.repeat(image, 'b c h w -> b c t h w', t=time)
+                    clip_num_patch_tokens = self.num_video_query_token * math.ceil(
+                        image.shape[2] / self.stride) if self.stride > 0 else self.num_video_query_token  #96
+                    img_embeds, atts_img = self.encode_videoQformer_visual(image, timestamp=samples["timestamps"],is_video_clip=True)
+                temp_input_ids = copy.deepcopy(input_ids)
+                temp_input_ids[temp_input_ids == im_patch_token_id] = 0
+                if self.lora:
+                    temp_input_embedding = self.llama_model.get_base_model().model.embed_tokens(temp_input_ids)
+                else:
+                    temp_input_embedding = self.llama_model.model.embed_tokens(temp_input_ids)
 
-            new_input_embeds = []
-            cur_image_idx = 0
-            for cur_input_ids, cur_input_embeds in zip(input_ids, temp_input_embedding):
-                cur_image_features = img_embeds[cur_image_idx]  # [num_video_query_token, dim]
-                cur_new_input_embeds = None
-                if isinstance(image, list):
-                    num_patch_tokens = num_patch_tokens_list[cur_image_idx]
-                    masked_indices = torch.where(cur_input_ids == im_patch_token_id)[0]
-                    start_index = masked_indices[0]
-                    all_token = (cur_input_ids == im_patch_token_id).sum()
+                new_input_embeds = []
+                cur_image_idx = 0
+                for cur_input_ids, cur_input_embeds in zip(input_ids, temp_input_embedding):
+                    cur_image_features = img_embeds[cur_image_idx]  # [num_video_query_token, dim]
+                    cur_new_input_embeds = None
+                    if isinstance(image, list):
+                        num_patch_tokens = num_patch_tokens_list[cur_image_idx]
+                        masked_indices = torch.where(cur_input_ids == im_patch_token_id)[0]
+                        start_index = masked_indices[0]
+                        all_token = (cur_input_ids == im_patch_token_id).sum()
 
-                    #为了新的video_id来设计的视频token插入方式
-                    mask_index = 0
-                    for index,num_token in enumerate(num_patch_tokens_list):
-                        if index == 0:
-                            cur_new_input_embeds = torch.cat((cur_input_embeds[:start_index], img_embeds[index].squeeze(0)), dim=0)
-                        elif index==len(num_patch_tokens_list)-1:
-                            cur_new_input_embeds = torch.cat((cur_new_input_embeds,cur_input_embeds[start_mask:end_mask],
-                                                                img_embeds[index].squeeze(0),
-                                                                cur_input_embeds[end_mask+num_token:]),dim=0)
-                            break
-                        else:
-                            cur_new_input_embeds = torch.cat((cur_new_input_embeds, cur_input_embeds[start_mask:end_mask],
-                                                                img_embeds[index].squeeze(0)),dim=0)
-                        mask_index += num_token
-                        start_mask = masked_indices[mask_index-1] + 1
-                        end_mask = masked_indices[mask_index]
-                    
-                    #旧的插入方式
-                    # for index, patch_token in enumerate(num_patch_tokens_list):
-                    #     if index == 0:
-                    #         cur_new_input_embeds = torch.cat((cur_input_embeds[:start_index], img_embeds[index].squeeze(0)), dim=0)
-                    #     elif index==len(num_patch_tokens_list)-1:
-                    #         cur_new_input_embeds = torch.cat((cur_new_input_embeds,img_embeds[index].squeeze(0),
-                    #                                         cur_input_embeds[start_index+all_token:]),dim=0)
-                    #     else:
-                    #         cur_new_input_embeds = torch.cat((cur_new_input_embeds,
-                    #                                         img_embeds[index].squeeze(0)),dim=0)
+                        #为了新的video_id 来设计的视频token插入方式
+                        mask_index = 0
+                        for index,num_token in enumerate(num_patch_tokens_list):
+                            if index == 0:
+                                cur_new_input_embeds = torch.cat((cur_input_embeds[:start_index], img_embeds[index].squeeze(0)), dim=0)
+                            elif index==len(num_patch_tokens_list)-1:
+                                cur_new_input_embeds = torch.cat((cur_new_input_embeds,cur_input_embeds[start_mask:end_mask],
+                                                                    img_embeds[index].squeeze(0),
+                                                                    cur_input_embeds[end_mask+num_token:]),dim=0)
+                                break
+                            else:
+                                cur_new_input_embeds = torch.cat((cur_new_input_embeds, cur_input_embeds[start_mask:end_mask],
+                                                                    img_embeds[index].squeeze(0)),dim=0)
+                            mask_index += num_token
+                            start_mask = masked_indices[mask_index-1] + 1
+                            end_mask = masked_indices[mask_index]
                         
-                else:
-                    if (cur_input_ids == im_patch_token_id).sum() != clip_num_patch_tokens:
-                        raise ValueError(
-                            "The number of image patch tokens should be the same as the number of image patches.")
-                    masked_indices = torch.where(cur_input_ids == im_patch_token_id)[0]
-                    
-                    mask_index_start = masked_indices[0]
-                    if (masked_indices != torch.arange(mask_index_start, mask_index_start + clip_num_patch_tokens,
-                                                    device=masked_indices.device, dtype=masked_indices.dtype)).any():
-                        raise ValueError("The image patch tokens should be consecutive.")
+                        #旧的插入方式
+                        # for index, patch_token in enumerate(num_patch_tokens_list):
+                        #     if index == 0:
+                        #         cur_new_input_embeds = torch.cat((cur_input_embeds[:start_index], img_embeds[index].squeeze(0)), dim=0)
+                        #     elif index==len(num_patch_tokens_list)-1:
+                        #         cur_new_input_embeds = torch.cat((cur_new_input_embeds,img_embeds[index].squeeze(0),
+                        #                                         cur_input_embeds[start_index+all_token:]),dim=0)
+                        #     else:
+                        #         cur_new_input_embeds = torch.cat((cur_new_input_embeds,
+                        #                                         img_embeds[index].squeeze(0)),dim=0)
+                            
+                    else:
+                        if (cur_input_ids == im_patch_token_id).sum() != clip_num_patch_tokens:
+                            raise ValueError(
+                                "The number of image patch tokens should be the same as the number of image patches.")
+                        masked_indices = torch.where(cur_input_ids == im_patch_token_id)[0]
+                        
+                        mask_index_start = masked_indices[0]
+                        if (masked_indices != torch.arange(mask_index_start, mask_index_start + clip_num_patch_tokens,
+                                                        device=masked_indices.device, dtype=masked_indices.dtype)).any():
+                            raise ValueError("The image patch tokens should be consecutive.")
 
-                    cur_new_input_embeds = torch.cat((cur_input_embeds[:mask_index_start], cur_image_features,
-                                                    cur_input_embeds[mask_index_start + clip_num_patch_tokens:]), dim=0)
-                new_input_embeds.append(cur_new_input_embeds)
+                        cur_new_input_embeds = torch.cat((cur_input_embeds[:mask_index_start], cur_image_features,
+                                                        cur_input_embeds[mask_index_start + clip_num_patch_tokens:]), dim=0)
+                    new_input_embeds.append(cur_new_input_embeds)
 
-                cur_image_idx += 1
-            inputs_embeds = torch.stack(new_input_embeds, dim=0)
-            targets = samples['labels']
-            attention_mask = samples['attention_mask']
-            with self.maybe_autocast():
-                outputs = self.llama_model(
-                    inputs_embeds=inputs_embeds,
-                    attention_mask=attention_mask,
-                    return_dict=True,
-                    labels=targets,
-                )
-                # logger = logging.getLogger('ivcr.train')
-                # indice = torch.where(targets[0]==-100)
-                # end_index = indice[0].shape
-                # end_index = end_index[0]
-                # pre_logits = outputs.logits
-                # pre_logits = pre_logits.argmax(dim=-1)
-                # pre_text = self.llama_tokenizer.batch_decode(pre_logits[:,end_index-1:], skip_special_tokens=False, clean_up_tokenization_spaces=True)
-                # output = pre_text[0]
-                #     # indice = torch.where(targets[0]==-100)[0].shape[0]
-                #     # output = self.tokenizer.batch_decode(outputs.logits.argmax(dim=-1)[:, indice-1: ])
-                # logger.info(output)
-                return {"loss":outputs.loss}
-                iou_loss = 0
-                index_loss = 0
-                """
-                if flag:
-                    indice = torch.where(targets[0]==-100)
-                    end_index = indice[0].shape
-                    end_index = end_index[0]
-                    pre_logits = outputs.logits
-                    pre_logits = pre_logits.argmax(dim=-1)
-                    pre_text = self.llama_tokenizer.batch_decode(pre_logits[:,end_index-1:], skip_special_tokens=True, clean_up_tokenization_spaces=False)
-                    pre_text = pre_text[0]
-                    logger.info(pre_text)
-                    first_part = pre_text.split('.')[0]
-                    if "temporal video grounding" in first_part:
-                        pre_temporal = extract_time(pre_text)
-                        gt_temporal = samples['gt_value'][0]
-                        if pre_temporal == []:
-                            iou_loss = 1.
-                        elif len(pre_temporal[0]) == 2:
-                                iou_loss = iou(pre_temporal[0],gt_temporal)
-                        else:
-                            iou_loss = 1.
-                    elif "video retrieval" in first_part:
-                        iou_loss = 1.
-                        second_part = pre_text.split('.')[1]
-                        index = find_number(second_part)-1
-                        if 0<=index<=9:
-                            pre_index = torch.full((1,10),0.01)
-                            pre_index[0][index] = 10
-                            gt_index = samples['gt_value']
-                            gt_index[0] = gt_index[0]-1
-                            gt = torch.tensor(gt_index)
-                            index_loss = self.cross_fn(pre_index,gt)
-                        else:
-                            index_loss = 0.
-                    loss  = outputs.loss
-                    loss = loss + 0.01*((1-iou_loss) + index_loss)
-                    return {"loss":loss}
+                    cur_image_idx += 1
+                inputs_embeds = torch.stack(new_input_embeds, dim=0)
+                input_all_embeds.append(inputs_embeds)
+                targets = samples['labels']
+                all_targets.append(targets)
+                attention_mask = samples['attention_mask']
+                attention_all_mask.append(attention_mask)
+        inputs_embeds = torch.cat([emb for emb in input_all_embeds],dim=1)
+        attention_mask = torch.cat([mask for mask in attention_all_mask], dim=1)
+        targets = torch.cat([target for target in all_targets],dim=1)
+        with self.maybe_autocast():
+            outputs = self.llama_model(
+                inputs_embeds=inputs_embeds,
+                attention_mask=attention_mask,
+                return_dict=True,
+                labels=targets,
+            )
+        return {"loss":outputs.loss}    
+                    # logger = logging.getLogger('ivcr.train')
+                    # indice = torch.where(targets[0]==-100)
+                    # end_index = indice[0].shape
+                    # end_index = end_index[0]
+                    # pre_logits = outputs.logits
+                    # pre_logits = pre_logits.argmax(dim=-1)
+                    # pre_text = self.llama_tokenizer.batch_decode(pre_logits[:,end_index-1:], skip_special_tokens=False, clean_up_tokenization_spaces=True)
+                    # output = pre_text[0]
+                    #     # indice = torch.where(targets[0]==-100)[0].shape[0]
+                    #     # output = self.tokenizer.batch_decode(outputs.logits.argmax(dim=-1)[:, indice-1: ])
+                    # logger.info(output)
+        
+                    # iou_loss = 0
+                    # index_loss = 0
+        """
+        if flag:
+            indice = torch.where(targets[0]==-100)
+            end_index = indice[0].shape
+            end_index = end_index[0]
+            pre_logits = outputs.logits
+            pre_logits = pre_logits.argmax(dim=-1)
+            pre_text = self.llama_tokenizer.batch_decode(pre_logits[:,end_index-1:], skip_special_tokens=True, clean_up_tokenization_spaces=False)
+            pre_text = pre_text[0]
+            logger.info(pre_text)
+            first_part = pre_text.split('.')[0]
+            if "temporal video grounding" in first_part:
+                pre_temporal = extract_time(pre_text)
+                gt_temporal = samples['gt_value'][0]
+                if pre_temporal == []:
+                    iou_loss = 1.
+                elif len(pre_temporal[0]) == 2:
+                        iou_loss = iou(pre_temporal[0],gt_temporal)
                 else:
-                    loss = outputs.loss
-                    return {"loss": loss}
-                """
+                    iou_loss = 1.
+            elif "video retrieval" in first_part:
+                iou_loss = 1.
+                second_part = pre_text.split('.')[1]
+                index = find_number(second_part)-1
+                if 0<=index<=9:
+                    pre_index = torch.full((1,10),0.01)
+                    pre_index[0][index] = 10
+                    gt_index = samples['gt_value']
+                    gt_index[0] = gt_index[0]-1
+                    gt = torch.tensor(gt_index)
+                    index_loss = self.cross_fn(pre_index,gt)
+                else:
+                    index_loss = 0.
+            loss  = outputs.loss
+            loss = loss + 0.01*((1-iou_loss) + index_loss)
+            return {"loss":loss}
         else:
-            image = samples["image"]
-
-            if len(image.size()) != 5:
-                time = 1
-                image = einops.repeat(image, 'b c h w -> b c t h w', t=time)
-            #no timestamp
-            img_embeds, atts_img = self.encode_videoQformer_visual(image)
-
-            if self.prompt_list:
-                prompt = random.choice(self.prompt_list)
-                img_embeds, atts_img = self.prompt_wrap(img_embeds, atts_img, prompt)
-
-            self.llama_tokenizer.padding_side = "right"
-            
-            text = [t + self.end_sym for t in samples["text_input"]]
-
-            to_regress_tokens = self.llama_tokenizer(
-                text,
-                return_tensors="pt",
-                padding="longest",
-                truncation=True,
-                max_length=self.max_txt_len,
-                add_special_tokens=False
-            ).to(image.device)
-
-            targets = to_regress_tokens.input_ids.masked_fill(
-                to_regress_tokens.input_ids == self.llama_tokenizer.pad_token_id, -100
-            )
-
-            empty_targets = (
-                torch.ones([atts_img.shape[0], atts_img.shape[1] + 1],
-                           dtype=torch.long).to(image.device).fill_(-100)  # plus one for bos
-            )
-            targets = torch.cat([empty_targets, targets], dim=1)
-
-            batch_size = img_embeds.shape[0]
-            bos = torch.ones([batch_size, 1],
-                             dtype=to_regress_tokens.input_ids.dtype,
-                             device=to_regress_tokens.input_ids.device) * self.llama_tokenizer.bos_token_id
-            if self.lora:
-                bos_embeds = self.llama_model.get_base_model().model.embed_tokens(bos)
-                to_regress_embeds = self.llama_model.get_base_model().model.embed_tokens(to_regress_tokens.input_ids)
-            else:
-                bos_embeds = self.llama_model.model.embed_tokens(bos)
-                to_regress_embeds = self.llama_model.model.embed_tokens(to_regress_tokens.input_ids)
-            atts_bos = atts_img[:, :1]
-
-            inputs_embeds = torch.cat([bos_embeds, img_embeds, to_regress_embeds], dim=1)
-            attention_mask = torch.cat([atts_bos, atts_img, to_regress_tokens.attention_mask], dim=1)
-
-            with self.maybe_autocast():
-                outputs = self.llama_model(
-                    inputs_embeds=inputs_embeds,
-                    attention_mask=attention_mask,
-                    return_dict=True,
-                    labels=targets,
-                )
             loss = outputs.loss
+            return {"loss": loss}
+        """
+            
 
         return {"loss": loss}
 

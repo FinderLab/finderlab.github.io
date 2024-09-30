@@ -103,7 +103,8 @@ class Video_Instruct_Builder(BaseDatasetBuilder):
             num_frm=num_frm,
             sample_type=sample_type,
             max_txt_len=max_txt_len,
-            stride=stride
+            stride=stride,
+            tokenizer= self.tokenizer
         )
         
         return datasets

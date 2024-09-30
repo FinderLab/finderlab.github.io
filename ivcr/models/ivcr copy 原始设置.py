@@ -444,7 +444,7 @@ class IVCR(Blip2Base):
                     start_index = masked_indices[0]
                     all_token = (cur_input_ids == im_patch_token_id).sum()
 
-                    #为了新的video_id来设计的视频token插入方式
+                    #为了新的video_id 来设计的视频token插入方式
                     mask_index = 0
                     for index,num_token in enumerate(num_patch_tokens_list):
                         if index == 0:

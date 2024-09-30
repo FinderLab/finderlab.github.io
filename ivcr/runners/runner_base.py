@@ -135,7 +135,7 @@ class RunnerBase:
 
         if amp:
             if self._scaler is None:
-                self._scaler = torch.cuda.amp.GradScaler()
+                self._scaler = torch.amp.GradScaler('cuda')
 
         return self._scaler
 
@@ -296,7 +296,7 @@ class RunnerBase:
 
     @property
     def log_freq(self):
-        log_freq = self.config.run_cfg.get("log_freq", 1200)
+        log_freq = self.config.run_cfg.get("log_freq", 400)
         return int(log_freq)
 
     @property
