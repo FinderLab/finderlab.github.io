@@ -79,5 +79,5 @@ python evaluate.py --task tvg
 
 Video Retrieval
 ```
-python evaluate.py
+python evaluate.py --task format_video 
 ```
