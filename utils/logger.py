@@ -12,6 +12,7 @@ def setup_logger(name, save_dir, filename="log_train.txt"):
     ch.setFormatter(formatter)
     logger.addHandler(ch)
     
+    
     if save_dir:
         fh = logging.FileHandler(os.path.join(save_dir, filename))
         fh.setLevel(logging.DEBUG)
