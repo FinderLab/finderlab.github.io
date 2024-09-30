@@ -39,7 +39,8 @@ datasets:
   ivcr_instruct:
     data_type: video
     build_info:
-      anno_dir : "/data/longshaohua/TimeChat/data_processing/IVCR-200k/final_train_data.json"
+      anno_dir : "/data/longshaohua/TimeChat/data_processing/train_data/final_train_video_and_clip_data.json"
+      # anno_dir: "/data/longshaohua/TimeChat/data_processing/IVCR-200k/IVCR-5k-conv-version2.json"
       videos_dir : "/data/hanning/data/ivcr_compress"
     vis_processor:
       train:
@@ -67,22 +68,21 @@ run:
   warmup_lr: 1e-6
 
   weight_decay: 0.05
-  max_epoch: 10
-  iters_per_epoch: 28000 
+  max_epoch: 8
+  iters_per_epoch: 20000 
   batch_size_train: 1
   batch_size_eval: 4
   num_workers: 4
-  warmup_steps: 28000 
+  warmup_steps: 20000
   accum_grad_iters: 4
   
   seed: 42
-  output_dir: "ckpt/timechat/change_number_shuffle_error_final_train_28w"
+  output_dir: "ckpt/timechat/all_data_danshi_qiehuan_vr_template"
   amp: True
-  # resume_ckpt_path: ""
 
-  evaluate: False 
+  evaluate: False
   train_splits: ["train"]
-
+  
   device: "cuda"
   world_size: 1
   dist_url: "env://"
