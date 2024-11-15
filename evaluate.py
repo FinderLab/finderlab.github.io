@@ -279,7 +279,7 @@ if __name__ == "__main__":
     parser.add_argument('--anno_path', type=str, default='/data/longshaohua/TimeChat/data_processing/IVCR-200k/test_data/T-MASS/test_video_dup_data_add_top10_no_zero.json')
     parser.add_argument('--video_path', type=str, default='/data/hanning/data/ivcr_compress')
     parser.add_argument('--model_type', type=str)
-    parser.add_argument('--task',default='format_video')  # dvc format_video for dense video captioning; tvg for temporal video grounding; vhd for video highlight detection
+    parser.add_argument('--task',default='tvg')  # dvc format_video for dense video captioning; tvg for temporal video grounding; vhd for video highlight detection
     parser.add_argument('--dataset', default='IVCR')
     parser.add_argument('--output_dir', default='./output/test_for_final_ivcr_VR/all_data_danshi_qiehuan_vr_template/2024_09_25_20_34/Tmass/cp4')
     parser.add_argument('--split', default='test')

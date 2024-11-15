@@ -18,8 +18,7 @@ between the user and the retrieval system. The main contributions are summarized
 ii)-We
 72 introduce a dataset and accompanying framework. Notably, the IVCR-200K dataset is a high73
 quality, bilingual, multi-turn, conversational, and abstract semantic dataset designed to support video
-74 and moment retrieval. The InterLLaVA framework leverages multi-modal large language models
-75 (MLLMs) to enable multi-turn dialogue experiences between users and the retrieval system.
+74 and moment retrieval. 
 
 ## Example Outputs
 <p float="left">
