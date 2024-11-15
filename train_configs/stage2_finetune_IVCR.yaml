@@ -10,9 +10,9 @@ model:
 
   vit_model: "/data/longshaohua/project/Ask-Anything/eva_vit/eva_vit_g.pth"
   llama_model: "/data/longshaohua/project/Ask-Anything/Video-LLaMA-2-7B-Finetuned/llama-2-7b-chat-hf"
-  q_former_model: "/data/longshaohua/project/Ask-Anything/Q_Former/instruct_blip_vicuna7b_trimmed.pth"
+  q_former_model: "/data/longshaohua/project/Ask-Anything/Q_Former/instruct_blip_vicuna7b_trimmed.pth" #for image qformer
   ckpt: "/data/longshaohua/project/Ask-Anything/TimeChat/TimeChat-7b/timechat_7b.pth"   # continue fine-tuning from TimeChat-7B ckpt
-  ckpt_2: "/data/longshaohua/project/Ask-Anything/Video-LLaMA-2-7B-Finetuned/VL_LLaMA_2_7B_Finetuned.pth"  # fine-tuning from Video-LLaMA-2-7B ckpt
+  ckpt_2: "/data/longshaohua/project/Ask-Anything/Video-LLaMA-2-7B-Finetuned/VL_LLaMA_2_7B_Finetuned.pth"  # fine-tuning from Video-LLaMA-2-7B ckpt for video qformer
 
   # only train vision branch
   frozen_llama_proj: False
@@ -69,11 +69,11 @@ run:
 
   weight_decay: 0.05
   max_epoch: 8
-  iters_per_epoch: 20000 
+  iters_per_epoch: 8000 
   batch_size_train: 1
   batch_size_eval: 4
   num_workers: 4
-  warmup_steps: 20000
+  warmup_steps: 8000
   accum_grad_iters: 4
   
   seed: 42
