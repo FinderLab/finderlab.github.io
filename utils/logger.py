@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+# record log data
 
 def setup_logger(name, save_dir, filename="log_train.txt"):
     logger = logging.getLogger(name)
