@@ -59,6 +59,7 @@ if __name__ == "__main__":
     submission = read_json(args.pred_file)
     pred_timestamps = {}
     count = 0
+    #use count as flag
     for qid, jterm in submission.items():
         if jterm.get('intent') == -1:
             count+=1
