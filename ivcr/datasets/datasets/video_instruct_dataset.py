@@ -34,9 +34,9 @@ video_conversation = Conversation(
 )
 
 llama_v2_video_conversation = Conversation(
-    # system="You are a helpful language and vision assistant. "
-    #        "You are able to understand the visual content that the user provides, "
-    #        "and assist the user with a variety of tasks using natural language.",
+    system="You are a helpful language and vision assistant. "
+           "You are able to understand the visual content that the user provides, "
+           "and assist the user with a variety of tasks using natural language.",
     system=" ",
     roles=("USER", "ASSISTANT"),
     messages=(),
@@ -48,7 +48,7 @@ llama_v2_video_conversation = Conversation(
 
 IGNORE_INDEX = -100
 
-
+#数据读取代码
 class Video_Instruct_Dataset(BaseDataset):
     def __init__(self, vis_processor, text_processor,v_frm, vis_root, ann_root, num_video_query_token=32,
                  tokenizer_name='/mnt/workspace/ckpt/vicuna-13b/', data_type='video', model_type='vicuna', num_frm=8,
@@ -106,6 +106,7 @@ class Video_Instruct_Dataset(BaseDataset):
                 sam = dict(q=sample['Q'],
                            a=sample['A'])
                 conversation_list = [sam]
+                #视频检索
                 if sample.get('type') == 1:
                     cur_n_frms = []
                     video_path_list,gt_value = self._get_video_list_path(sample)
@@ -158,7 +159,7 @@ class Video_Instruct_Dataset(BaseDataset):
                         # messagees.append(msg)
                     # data_dict['message'] = messagees
                     data_dict['timestamps'] = all_timestamps
-
+                #视频片段检索
                 else:
                     video_path,gt_value = self._get_video_path(sample)
                     video, msg = load_video(
