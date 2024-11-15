@@ -6,7 +6,7 @@ model:
   max_txt_len: 2048
   end_sym: "</s>"
   low_resource: False
-
+  use_log: false
 
   frozen_llama_proj: True
   frozen_video_Qformer: True
